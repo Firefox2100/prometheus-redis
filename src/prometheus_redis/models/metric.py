@@ -110,14 +110,30 @@ class RCounter(RMetric):
             label_names=label_names,
         )
 
-        self.value = value
-
         if label_names:
             # Labels are defined, value has to be a dict
             if value:
                 raise LabelAmountMismatch('Initial value must be a dict when label names are defined')
             else:
                 self.value = {}
+        else:
+            self.value = value
+
+    @property
+    def value(self) -> float | dict[str, float]:
+        if not self.label_names:
+            return self.db.get(self.metric_name) or 0.0
+        else:
+            keys = self.db.keys(f'{self.metric_name}:*')
+            return {key: self.db.get(key) or 0.0 for key in keys}
+
+    @value.setter
+    def value(self, value):
+        if not self.label_names:
+            self.db.set(self.metric_name, value)
+        else:
+            for key, val in value.items():
+                self.db.set(key, val)
 
     def inc(self,
             value=1.0,
@@ -129,11 +145,9 @@ class RCounter(RMetric):
         :param kwargs: The label values
         """
         if not self.label_names:
-            self.value += value
             self.db.incrbyfloat(self.metric_name, value)
         else:
             key = self._assemble_key(**kwargs)
-            self.value[key] = self.value.get(key, 0.0) + value
             self.db.incrbyfloat(key, value)
 
 
@@ -151,14 +165,30 @@ class RGauge(RMetric):
             label_names=label_names,
         )
 
-        self.value = value
-
         if label_names:
             # Labels are defined, value has to be a dict
             if value:
                 raise ValueError('Initial value must be a dict when label names are defined')
             else:
                 self.value = {}
+        else:
+            self.value = value
+
+    @property
+    def value(self) -> float | dict[str, float]:
+        if not self.label_names:
+            return self.db.get(self.metric_name) or 0.0
+        else:
+            keys = self.db.keys(f'{self.metric_name}:*')
+            return {key: self.db.get(key) or 0.0 for key in keys}
+
+    @value.setter
+    def value(self, value):
+        if not self.label_names:
+            self.db.set(self.metric_name, value)
+        else:
+            for key, val in value.items():
+                self.db.set(key, val)
 
     def set(self,
             value: float,
@@ -170,13 +200,9 @@ class RGauge(RMetric):
         :param kwargs: The label values
         """
         if not self.label_names:
-            self.value = value
             self.db.set(self.metric_name, value)
         else:
-            self.value: dict[str, float]
-
             key = self._assemble_key(**kwargs)
-            self.value[key] = value
             self.db.set(key, value)
 
     def inc(self,
@@ -189,11 +215,9 @@ class RGauge(RMetric):
         :param kwargs: The label values
         """
         if not self.label_names:
-            self.value += value
             self.db.incrbyfloat(self.metric_name, value)
         else:
             key = self._assemble_key(**kwargs)
-            self.value[key] = self.value.get(key, 0.0) + value
             self.db.incrbyfloat(key, value)
 
     def dec(self,
@@ -206,11 +230,9 @@ class RGauge(RMetric):
         :param kwargs: The label values
         """
         if not self.label_names:
-            self.value -= value
             self.db.incrbyfloat(self.metric_name, -value)
         else:
             key = self._assemble_key(**kwargs)
-            self.value[key] = self.value.get(key, 0.0) - value
             self.db.incrbyfloat(key, -value)
 
 
@@ -221,16 +243,61 @@ class RHistogram(RMetric):
                  buckets: list[float],
                  values: list[int] | dict[str, list[int]] = None,
                  sum_value: float | dict[str, float] = 0.0,
+                 label_names: list[str] = None,
                  ):
         super().__init__(
             metric_type=RMetricType.HISTOGRAM,
             metric_name=metric_name,
             description=description,
+            label_names=label_names,
         )
 
         self.buckets = buckets
-        self.values = values if values else [0] * len(buckets)
         self.sum_value = sum_value
+
+        if label_names:
+            # Labels are defined, values and sum_value have to be a dict
+            if not isinstance(values, dict) or not isinstance(sum_value, dict):
+                raise ValueError('Initial values must be a dict when label names are defined')
+            else:
+                self.values = {}
+                self.sum_value = {}
+        else:
+            self.values = values if values else [0] * len(buckets)
+
+    @property
+    def values(self) -> list[int] | dict[str, list[int]]:
+        if not self.label_names:
+            return self.db.lrange(self.metric_name, 0, -1)
+        else:
+            keys = self.db.keys(f'{self.metric_name}:*')
+            return {key: self.db.lrange(key, 0, -1) for key in keys}
+
+    @values.setter
+    def values(self, values):
+        if not self.label_names:
+            self.db.delete(self.metric_name)
+            self.db.rpush(self.metric_name, *values)
+        else:
+            for key, val in values.items():
+                self.db.delete(key)
+                self.db.rpush(key, *val)
+
+    @property
+    def sum_value(self) -> float | dict[str, float]:
+        if not self.label_names:
+            return self.db.get(f'{self.metric_name}:sum') or 0.0
+        else:
+            keys = self.db.keys(f'{self.metric_name}:*')
+            return {key: self.db.get(f'{key}:sum') or 0.0 for key in keys}
+
+    @sum_value.setter
+    def sum_value(self, sum_value):
+        if not self.label_names:
+            self.db.set(f'{self.metric_name}:sum', sum_value)
+        else:
+            for key, val in sum_value.items():
+                self.db.set(f'{key}:sum', val)
 
     def to_dict(self) -> dict:
         payload = super().to_dict()
@@ -264,9 +331,6 @@ class RHistogram(RMetric):
             for i, bucket in enumerate(self.buckets):
                 if value < bucket:
                     increment_index.append(i)
-                    self.values[i] += 1
-
-            self.sum_value += value
 
             self._histogram_update_script(
                 keys=[self.metric_name],
@@ -279,8 +343,6 @@ class RHistogram(RMetric):
             for i, bucket in enumerate(self.buckets):
                 if value < bucket:
                     increment_index.append(i)
-                    self.values[key][i] += 1
-            self.sum_value[key] = self.sum_value.get(key, 0.0) + value
 
             self._histogram_update_script(
                 keys=[key],
