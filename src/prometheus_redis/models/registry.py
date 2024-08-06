@@ -5,7 +5,7 @@ from prometheus_redis.etc.errors import MetricNotFound
 from .metric import RMetric
 
 
-class Registry:
+class RedisRegistry:
     metrics: List[RMetric] = []
     db: Optional[Redis] = None
 

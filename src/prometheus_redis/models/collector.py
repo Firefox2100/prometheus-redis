@@ -4,8 +4,8 @@ from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, Histo
 from prometheus_client.registry import Collector
 
 from prometheus_redis.etc.enums import RMetricType
-from .registry import Registry
-from .metric import RMetric, RCounter, RGauge, RHistogram
+from .registry import RedisRegistry
+from .metric import RCounter, RGauge, RHistogram
 
 
 class RedisCollector(Collector):
@@ -81,7 +81,7 @@ class RedisCollector(Collector):
         return histogram
 
     def collect(self) -> Iterable[Metric]:
-        for r_metric in Registry.metrics:
+        for r_metric in RedisRegistry.metrics:
             if r_metric.metric_type == RMetricType.COUNTER:
                 if not isinstance(r_metric, RCounter):
                     raise RuntimeError(f"Metric {r_metric.metric_name} is not a Counter")
