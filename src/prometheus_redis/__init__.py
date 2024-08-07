@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING
 
+from .etc.enums import RMetricType
 from .models import RMetric, RCounter, RGauge, RHistogram
 from .models import RedisRegistry
 from .models import RedisCollector

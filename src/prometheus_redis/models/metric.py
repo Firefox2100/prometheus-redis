@@ -22,6 +22,19 @@ class RMetric:
         self.label_names = label_names or []
         self.label_names.sort()
 
+    def __eq__(self, other):
+        if not isinstance(other, RMetric):
+            return NotImplemented
+
+        if self.label_names != other.label_names:
+            return False
+
+        return all([
+            self.metric_type == other.metric_type,
+            self.metric_name == other.metric_name,
+            self.description == other.description,
+        ])
+
     def to_dict(self) -> Dict:
         payload = {
             'metricType': self.metric_type.value,
